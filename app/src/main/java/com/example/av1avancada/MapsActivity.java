@@ -1,15 +1,16 @@
 package com.example.av1avancada;
 
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.location.Location;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.os.Handler;
+
+import android.os.CountDownTimer;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
-import android.widget.FrameLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -18,7 +19,7 @@ import androidx.cardview.widget.CardView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-import com.example.av1avancada.route.Route;
+import com.AV1Avancada.R;
 import com.google.android.gms.common.api.Status;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationListener;
@@ -34,10 +35,9 @@ import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
+
 import com.google.android.libraries.places.api.Places;
 import com.google.android.libraries.places.api.model.Place;
-import com.google.android.libraries.places.widget.AutocompleteSupportFragment;
-import com.google.android.libraries.places.widget.listener.PlaceSelectionListener;
 
 import org.json.JSONObject;
 
@@ -53,10 +53,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 
-public class MapsActivity extends AppCompatActivity
-        implements OnMapReadyCallback, LocationListener {
+import com.google.android.libraries.places.widget.AutocompleteSupportFragment;
+import com.google.android.libraries.places.widget.listener.PlaceSelectionListener;
 
-    private static final String TAG = MapsActivity.class.getSimpleName();
+public class MapsActivity extends AppCompatActivity implements OnMapReadyCallback, LocationListener {
+
     private GoogleMap googleMapa;
     private FusedLocationProviderClient fusedLocationProviderClient;
     // Localização de Lavras-MG como padrão caso a permissão de localização for negada.
@@ -76,35 +77,38 @@ public class MapsActivity extends AppCompatActivity
     private TextView textVelocidade;
     private TextView textVelocidadeObjetivo;
     private TextView textViewTempo;
+    private TextView textViewDistancia;
+    private TextView textViewCombustivel;
+    private TextView textViewUnidadeMedida;
+    private TextView textViewUnidadeMedida2;
     private Button iniciar;
     private CardView cardview;
-    private Handler handler;
-    private Runnable runnable;
-    private boolean isTimerRunning = false;
-    private int seconds = 0;
+    private CountDownTimer countDownTimer;
+    private long startTimeMillis;
 
+    // Quando a atividade é criada, o método OnCreate e chamado.
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Retrieve location and camera position from saved instance state.
+        // Recupera a localização e a posição da câmera do estado da instância salva.
         if (savedInstanceState != null) {
             lastKnownLocation = savedInstanceState.getParcelable(KEY_LOCATION);
             cameraPosition = savedInstanceState.getParcelable(KEY_CAMERA_POSITION);
         }
 
+        // Inicia Places passando token de acesso.
         Places.initialize(getApplicationContext(), "AIzaSyBGgkO6xusRHK_ryDFUu_HvcixyOFhLsEg");
 
-        // Retrieve the content view that renders the map.
+        // Recupere a exibição de conteúdo que renderiza o mapa.
         setContentView(R.layout.activity_maps);
 
-        // Construct a FusedLocationProviderClient.
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
 
-        // Build the map.
+        // Faz a contrução do  o mapa.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
-        if (mapFragment != null) {
+        if(mapFragment != null) {
             mapFragment.getMapAsync(this);
         }
 
@@ -118,24 +122,21 @@ public class MapsActivity extends AppCompatActivity
                 getSupportFragmentManager().findFragmentById(R.id.destination);
         destination.setHint("Escolha local de destino");
 
+        // Recupere a exibição dos Buttons Iniciar e Encerrar e modifica sua visibilidade
         iniciar = findViewById(R.id.buttonIniciar);
-        iniciar.setBackgroundResource(R.drawable.start_background);
+        iniciar.setBackgroundColor(R.drawable.start_background);
+        iniciar.setBackgroundTintList(ColorStateList.valueOf(Color.BLUE));
         iniciar.setVisibility(View.INVISIBLE);
 
         Button encerrar = findViewById(R.id.buttonEncerrar);
-        iniciar.setBackgroundResource(R.drawable.stop_background);
-        iniciar.setVisibility(View.INVISIBLE);
+        encerrar.setBackgroundColor(R.drawable.stop_background);
+        encerrar.setBackgroundTintList(ColorStateList.valueOf(Color.RED));
+        encerrar.setVisibility(View.INVISIBLE);
 
-        textVelocidade = findViewById(R.id.textVelocidade);
-        textVelocidadeObjetivo = findViewById(R.id.textVelocidadeObjetivo);
+        // Recupere a exibição dos TextView e modifica sua visibilidade
+        RecuperaTextViews();
 
-        TextView textViewDistancia = findViewById(R.id.textViewDistancia);
-        textViewTempo = findViewById(R.id.textViewTempo);
-        TextView textViewCombustivel = findViewById(R.id.textViewCombustivel);
-
-        textViewDistancia.setVisibility(View.INVISIBLE);
-        textViewTempo.setVisibility(View.INVISIBLE);
-        textViewCombustivel.setVisibility(View.INVISIBLE);
+        modificaVisibilidadeViews(View.INVISIBLE,textViewDistancia, textViewCombustivel);
 
         iniciar.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -143,9 +144,9 @@ public class MapsActivity extends AppCompatActivity
                 iniciar.setVisibility(View.INVISIBLE);
                 cardview.setVisibility(View.INVISIBLE);
                 encerrar.setVisibility(View.VISIBLE);
-                textViewDistancia.setVisibility(View.VISIBLE);
-                textViewTempo.setVisibility(View.VISIBLE);
-                textViewCombustivel.setVisibility(View.VISIBLE);
+
+                modificaVisibilidadeViews(View.VISIBLE, textViewDistancia, textViewCombustivel);
+
                 startTimer();
             }
         });
@@ -156,46 +157,49 @@ public class MapsActivity extends AppCompatActivity
                 iniciar.setVisibility(View.VISIBLE);
                 cardview.setVisibility(View.VISIBLE);
                 encerrar.setVisibility(View.INVISIBLE);
-                textViewDistancia.setVisibility(View.INVISIBLE);
-                textViewTempo.setVisibility(View.INVISIBLE);
-                textViewCombustivel.setVisibility(View.INVISIBLE);
+
+                modificaVisibilidadeViews(View.INVISIBLE, textViewDistancia, textViewCombustivel);
+
                 stopTimer();
             }
         });
 
-        // Specify the types of place data to return.
+        // Especifique os tipos de dados de local a serem retornados.
         starting.setPlaceFields(Arrays.asList(Place.Field.ID, Place.Field.NAME, Place.Field.ADDRESS, Place.Field.LAT_LNG));
         destination.setPlaceFields(Arrays.asList(Place.Field.ID, Place.Field.NAME, Place.Field.ADDRESS, Place.Field.LAT_LNG));
 
-        // Set up a PlaceSelectionListener to handle the response.
+        // Configure um PlaceSelectionListener para lidar com a resposta.
         starting.setOnPlaceSelectedListener(new PlaceSelectionListener() {
             @Override
             public void onPlaceSelected(@NonNull Place place) {
+                // Verifica se o mapa já esta marcado
                 if (markerPoints.size() > 1) {
+                    // Limpa mapa
                     markerPoints.clear();
                     googleMapa.clear();
                 }
 
-                origemLatLng = place.getLatLng();
+                // Obtem dados de origem
+                origemLatLng =  place.getLatLng();
                 String optionSnippet = place.getAddress();
 
+                // Marca local no mapa
                 markerPoints.add(origemLatLng);
 
                 googleMapa.addMarker(new MarkerOptions()
-                        .title(place.getName())
-                        .position(origemLatLng)
-                        .snippet(optionSnippet)
-                        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
+                                .title(place.getName())
+                                .position(origemLatLng)
+                                .snippet(optionSnippet)
+                                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)))
+                        .showInfoWindow();
 
                 getRouteNavigate();
 
-                Log.i(TAG, "Place: " + place.getName() + ", " + place.getId());
             }
 
             @Override
             public void onError(@NonNull Status status) {
-                // TODO: Handle the error.
-                Log.i(TAG, "An error occurred: " + status);
+                // TODO: Trate o erro.
             }
         });
 
@@ -207,28 +211,47 @@ public class MapsActivity extends AppCompatActivity
                     googleMapa.clear();
                 }
 
-                destinoLatLng = place.getLatLng();
+                destinoLatLng =  place.getLatLng();
                 String optionSnippet = place.getAddress();
 
                 markerPoints.add(destinoLatLng);
 
                 googleMapa.addMarker(new MarkerOptions()
-                        .title(place.getName())
-                        .position(destinoLatLng)
-                        .snippet(optionSnippet)
-                        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)));
+                                .title(place.getName())
+                                .position(destinoLatLng)
+                                .snippet(optionSnippet)
+                                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)))
+                        .showInfoWindow();
 
                 getRouteNavigate();
 
-                Log.i(TAG, "Place: " + place.getName() + ", " + place.getId());
             }
 
             @Override
             public void onError(@NonNull Status status) {
-                // TODO: Handle the error.
-                Log.i(TAG, "An error occurred: " + status);
+                // TODO: Trate o erro.
             }
         });
+    }
+
+    private void RecuperaTextViews() {
+        textVelocidade = findViewById(R.id.textVelocidade);
+        textVelocidadeObjetivo = findViewById(R.id.textVelocidadeObjetivo);
+        textViewDistancia = findViewById(R.id.textViewDistancia);
+        textViewTempo = findViewById(R.id.textViewTempo);
+        textViewCombustivel = findViewById(R.id.textViewCombustivel);
+        textViewUnidadeMedida = findViewById(R.id.textViewUnidadeMedida);
+        textViewUnidadeMedida2 = findViewById(R.id.textViewUnidadeMedida2);
+    }
+
+    private void modificaVisibilidadeViews(int visible, TextView textViewDistancia, TextView textViewCombustivel) {
+        textVelocidade.setVisibility(visible);
+        textVelocidadeObjetivo.setVisibility(visible);
+        textViewDistancia.setVisibility(visible);
+        textViewTempo.setVisibility(visible);
+        textViewCombustivel.setVisibility(visible);
+        textViewUnidadeMedida.setVisibility(visible);
+        textViewUnidadeMedida2.setVisibility(visible);
     }
 
     private void getRouteNavigate() {
@@ -281,8 +304,8 @@ public class MapsActivity extends AppCompatActivity
      */
     private void getDeviceLocation() {
         /*
-         * Get the best and most recent location of the device, which may be null in rare
-         * cases when a location is not available.
+         * Obtenha a melhor e mais recente localização do dispositivo, que pode ser nula em casos raros
+         * casos em que um local não está disponível.
          */
         try {
             if (locationPermissionGranted) {
@@ -299,8 +322,6 @@ public class MapsActivity extends AppCompatActivity
                                                 lastKnownLocation.getLongitude()), DEFAULT_ZOOM));
                             }
                         } else {
-                            Log.d(TAG, "Current location is null. Using defaults.");
-                            Log.e(TAG, "Exception: %s", task.getException());
                             googleMapa.moveCamera(CameraUpdateFactory
                                     .newLatLngZoom(defaultLocation, DEFAULT_ZOOM));
                             googleMapa.getUiSettings().setMyLocationButtonEnabled(false);
@@ -308,7 +329,7 @@ public class MapsActivity extends AppCompatActivity
                     }
                 });
             }
-        } catch (SecurityException e) {
+        } catch (SecurityException e)  {
             Log.e("Exception: %s", e.getMessage(), e);
         }
     }
@@ -318,8 +339,8 @@ public class MapsActivity extends AppCompatActivity
      */
     private void getLocationPermission() {
         /*
-         * Request location permission, so that we can get the location of the
-         * device. The result of the permission request is handled by a callback,
+         * Solicite permissão de localização, para que possamos obter a localização do
+         * dispositivo. O resultado da solicitação de permissão é tratado por um retorno de chamada,
          * onRequestPermissionsResult.
          */
         if (ContextCompat.checkSelfPermission(this.getApplicationContext(),
@@ -371,7 +392,7 @@ public class MapsActivity extends AppCompatActivity
                 lastKnownLocation = null;
                 getLocationPermission();
             }
-        } catch (SecurityException e) {
+        } catch (SecurityException e)  {
             Log.e("Exception: %s", e.getMessage());
         }
     }
@@ -469,20 +490,21 @@ public class MapsActivity extends AppCompatActivity
 
             googleMapa.clear();
 
-            // Drawing polyline in the Google Map for the i-th route
+            // Desenhando a polilinha no Google Map para a i-ésima rota
             googleMapa.addPolyline(lineOptions);
 
             googleMapa.addMarker(new MarkerOptions()
-                    .position(origemLatLng)
-                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
+                            .position(origemLatLng)
+                            .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)))
+                    .showInfoWindow();
 
             //End marker
             MarkerOptions optionsDestino = new MarkerOptions()
                     .position(destinoLatLng)
                     .title("Destino: " + route.get(0).getEndAddressText())
-                    .snippet("Distance: " + route.get(0).getDistanceText() + ", Duration: " + route.get(0).getDurationText());
+                    .snippet("Distance: " +  route.get(0).getDistanceText() + ", Duration: "  + route.get(0).getDurationText());
 
-            googleMapa.addMarker(optionsDestino);
+            googleMapa.addMarker(optionsDestino).showInfoWindow();
 
             iniciar.setVisibility(View.VISIBLE);
         }
@@ -549,41 +571,41 @@ public class MapsActivity extends AppCompatActivity
         return data;
     }
 
+
+    // Cronômetro gerado via ChatGPT
     private void startTimer() {
-        if (!isTimerRunning) {
-            isTimerRunning = true;
+        startTimeMillis = System.currentTimeMillis();
 
+        countDownTimer = new CountDownTimer(Long.MAX_VALUE, 1000) {
+            @Override
+            public void onTick(long millisUntilFinished) {
+                long elapsedTimeMillis = System.currentTimeMillis() - startTimeMillis;
+                updateTimer(elapsedTimeMillis);
+            }
 
-            handler = new Handler();
-            runnable = new Runnable() {
-                @Override
-                public void run() {
-                    seconds++;
-                    updateTimerText();
-                    handler.postDelayed(this, 1000);
-                }
-            };
+            @Override
+            public void onFinish() {
+                //Todo: Esse dado deve ser armazenado para calculos posteriores
+            }
+        };
 
-            handler.postDelayed(runnable, 1000);
-        }
+        countDownTimer.start();
     }
 
     private void stopTimer() {
-        if (isTimerRunning) {
-            isTimerRunning = false;
-
-            if (handler != null && runnable != null) {
-                handler.removeCallbacks(runnable);
-            }
+        if (countDownTimer != null) {
+            countDownTimer.cancel();
+            countDownTimer = null;
         }
     }
 
-    private void updateTimerText() {
-        int hours = seconds / 3600;
-        int minutes = (seconds % 3600) / 60;
-        int secs = seconds % 60;
+    private void updateTimer(long elapsedTimeMillis) {
+        long minutes = (elapsedTimeMillis / 1000) / 60;
+        long seconds = (elapsedTimeMillis / 1000) % 60;
 
-        String time = String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, secs);
+        String time = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds);
         textViewTempo.setText(time);
     }
+
 }
+

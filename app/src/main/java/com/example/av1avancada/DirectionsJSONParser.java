@@ -2,9 +2,6 @@ package com.example.av1avancada;
 
 import android.util.Log;
 
-import com.example.av1avancada.route.Route;
-import com.example.av1avancada.route.RouteException;
-import com.example.av1avancada.route.Segment;
 import com.google.android.gms.maps.model.LatLng;
 
 import org.json.JSONArray;

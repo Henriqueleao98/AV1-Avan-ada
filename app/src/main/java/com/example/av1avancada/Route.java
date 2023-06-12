@@ -1,5 +1,4 @@
-package com.example.av1avancada.route;
-//by Haseem Saheed
+package com.example.av1avancada;
 
 import android.os.Parcel;
 import android.os.Parcelable;
